@@ -190,7 +190,6 @@ migrate_db()
 load_data()
 
 # ── AUTO DEPENDENCY INSTALLER ────────────────────────
-# Import name → actual pip package name (jab dono alag hote hain)
 IMPORT_TO_PIP = {
     'telebot': 'pyTelegramBotAPI',
     'telegram': 'python-telegram-bot',
@@ -213,7 +212,6 @@ IMPORT_TO_PIP = {
     'serial': 'pyserial',
 }
 
-# Python built-in modules — inhe kabhi install karne ki koshish nahi karni
 STDLIB_MODULES = set(sys.stdlib_module_names) if hasattr(sys, 'stdlib_module_names') else {
     'os', 'sys', 'time', 'json', 're', 'math', 'random', 'datetime', 'collections',
     'itertools', 'functools', 'subprocess', 'threading', 'asyncio', 'socket', 'io',
@@ -223,7 +221,6 @@ STDLIB_MODULES = set(sys.stdlib_module_names) if hasattr(sys, 'stdlib_module_nam
 }
 
 def extract_imports(file_path):
-    """File ke andar se saare top-level 'import X' / 'from X import Y' nikalta hai"""
     modules = set()
     try:
         content = Path(file_path).read_text(errors='ignore')
@@ -235,8 +232,6 @@ def extract_imports(file_path):
     return modules
 
 def install_missing_dependencies(file_path, timeout=90):
-    """Script mein use ho rahi libraries check karke jo missing hain unhe pip se install karta hai.
-    Returns: (installed_list, failed_list)"""
     modules = extract_imports(file_path)
     installed, failed = [], []
 
@@ -244,7 +239,7 @@ def install_missing_dependencies(file_path, timeout=90):
         if mod in STDLIB_MODULES or mod in ('__future__',):
             continue
         if importlib.util.find_spec(mod) is not None:
-            continue  # already installed
+            continue
 
         pip_name = IMPORT_TO_PIP.get(mod, mod)
         try:
@@ -263,7 +258,7 @@ def install_missing_dependencies(file_path, timeout=90):
     return installed, failed
 
 def get_user_file_limit(user_id):
-    return OWNER_LIMIT  # Sabke liye unlimited — koi upload limit nahi
+    return OWNER_LIMIT
 
 def format_limit(limit):
     return "Unlimited ♾️" if limit == float('inf') else f"{limit} files"
@@ -303,7 +298,7 @@ def get_admin_panel_keyboard():
 
 def build_welcome_text(user_id: int, full_name: str) -> str:
     return f"""╔═══════════════════════╗
-    🚀 <b>GENIUS HOSTBOT</b> 🚀
+    🚀 <b>SOMU MODS</b> 🚀
     ⚡ <i>Script Runner Bot</i>
 ╚═══════════════════════╝
 
@@ -329,7 +324,7 @@ def build_welcome_text(user_id: int, full_name: str) -> str:
 📢 <b>Updates:</b> {UPDATE_CHANNEL}
 🎥 <b>YouTube:</b> {YOUTUBE_CHANNEL}
 
-⚡ <b>Developed by</b> Aditya (Genius Hacker)
+⚡ <b>Powered by</b> Somu Mods
 🔒 <b>Version:</b> 2.0"""
 
 @dp.message(Command("start"))
@@ -1209,8 +1204,6 @@ Please wait...
             if file_ext in ['.py', '.js']:
                 just_name = file_path.name
                 
-                # Agar file kisi subfolder mein extract hui hai, use root user_folder mein move karo
-                # taaki baad mein run karte waqt file mil jaye (registration sirf naam track karta hai)
                 extracted_full_path = user_folder / extracted_file
                 target_path = user_folder / just_name
                 if extracted_full_path.exists() and extracted_full_path != target_path:
@@ -1218,7 +1211,6 @@ Please wait...
                         extracted_full_path.rename(target_path)
                         just_name = target_path.name
                     else:
-                        # Naam already exist karta hai to unique bana do (overwrite se bachne ke liye)
                         stem, suf = target_path.stem, target_path.suffix
                         counter = 1
                         new_target = user_folder / f"{stem}_{counter}{suf}"
@@ -2205,7 +2197,7 @@ _BOT_USERNAME = None
 
 def _auth_ok(request):
     if not ADMIN_PASSWORD:
-        return True  # password set nahi hai to panel open rahega
+        return True
     h = request.headers.get('Authorization', '')
     if not h.startswith('Basic '):
         return False
@@ -2369,7 +2361,7 @@ async def panel_api(request):
     return web.json_response(_collect())
 
 ADMIN_HTML = """<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Genius HostBot - Dashboard</title><style>
+<title>Somu Mods - Dashboard</title><style>
 *{box-sizing:border-box}body{margin:0;font-family:system-ui,sans-serif;background:#0b0f17;color:#e6edf3;display:flex;min-height:100vh}
 #side{width:220px;background:#111826;border-right:1px solid #1f2a3d;padding:16px 10px;position:fixed;top:0;bottom:0;left:0;z-index:20;transition:.2s}
 .logo{font-weight:800;font-size:17px;padding:4px 10px 16px}.logo span{color:#58a6ff}
@@ -2395,12 +2387,12 @@ input,textarea{background:#0b0f17;color:#e6edf3;border:1px solid #30363d;border-
 #toast{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);padding:10px 18px;border-radius:8px;display:none;font-size:13px;z-index:99}
 @media(max-width:760px){#side{left:-230px}#side.open{left:0}#main{margin-left:0}#top{display:flex}}
 </style></head><body>
-<div id="side"><div class="logo">🚀 Genius <span>HostBot</span></div>
+<div id="side"><div class="logo">🚀 Somu <span>Mods</span></div>
 <button class="nav on" data-p="over">📊 Overview</button><button class="nav" data-p="bots">🤖 Running Bots</button>
 <button class="nav" data-p="files">📁 All Files</button><button class="nav" data-p="users">👥 Users</button>
 <button class="nav" data-p="cast">📢 Broadcast</button><button class="nav" data-p="set">⚙️ Settings</button>
-<a class="nav" href="/" style="text-decoration:none">🌐 Website</a><div class="side-foot">Developed by Aditya</div></div>
-<div id="main"><div id="top"><button class="a b" onclick="$('side').classList.toggle('open')">☰ Menu</button><b>Genius HostBot</b></div>
+<a class="nav" href="/" style="text-decoration:none">🌐 Website</a><div class="side-foot">Developed by Somu</div></div>
+<div id="main"><div id="top"><button class="a b" onclick="$('side').classList.toggle('open')">☰ Menu</button><b>Somu Mods</b></div>
 <h2 id="ttl"></h2><div class="sub" id="st"></div><div id="view"></div></div><div id="toast"></div>
 <script>
 const $=id=>document.getElementById(id);let D=null,P='over',Q='';
@@ -2436,7 +2428,7 @@ async def admin_page(request):
     return web.Response(text=ADMIN_HTML, content_type='text/html')
 
 LANDING_HTML = """<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Genius HostBot - Free Telegram Bot Hosting</title><meta name="description" content="Python aur Node.js bots ko Telegram se free mein host karo. Unlimited uploads, koi premium nahi.">
+<title>Somu Mods - Free Telegram Bot Hosting</title><meta name="description" content="Python aur Node.js bots ko Telegram se free mein host karo. Unlimited uploads, koi premium nahi.">
 <style>
 *{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;font-family:system-ui,sans-serif;background:#070b12;color:#e6edf3;line-height:1.55}
 nav{display:flex;justify-content:space-between;align-items:center;padding:14px 22px;position:sticky;top:0;background:#070b12ee;backdrop-filter:blur(8px);border-bottom:1px solid #151d2c;z-index:5}
@@ -2453,7 +2445,7 @@ details{background:#0f1624;border:1px solid #1f2a3d;border-radius:12px;padding:1
 .cta{text-align:center;background:linear-gradient(135deg,#12315f,#0f1624);border-radius:18px;padding:34px 20px}
 footer{text-align:center;color:#6b7785;padding:28px 10px;font-size:13px;border-top:1px solid #151d2c}footer a{color:#58a6ff;text-decoration:none;margin:0 6px}
 </style></head><body>
-<nav><b>🚀 Genius <span>HostBot</span></b><div><a href="#features">Features</a><a href="#how">How it works</a><a href="#faq">FAQ</a></div></nav>
+<nav><b>🚀 Somu <span>Mods</span></b><div><a href="#features">Features</a><a href="#how">How it works</a><a href="#faq">FAQ</a></div></nav>
 <div class="hero"><div class="badge">🆓 100% Free &bull; Unlimited Uploads</div>
 <h1>Apne Bots ko <span>24/7</span> Host Karo<br>Seedha Telegram Se</h1>
 <p>Python (.py), Node.js (.js) ya ZIP file bhejo, dependencies khud install hongi aur bot chalu. Koi premium plan nahi, koi limit nahi.</p>
@@ -2473,9 +2465,9 @@ footer{text-align:center;color:#6b7785;padding:28px 10px;font-size:13px;border-t
 <section id="faq"><h2>FAQ</h2>
 <details><summary>Kya ye sach mein free hai?</summary><p>Haan, koi premium plan ya upload limit nahi hai.</p></details>
 <details><summary>Kaunsi files chalti hain?</summary><p>Python (.py), Node.js (.js) aur ZIP projects.</p></details>
-<details><summary>Problem aaye to?</summary><p>Telegram pe owner @Hackerwibes2 se contact karo.</p></details></section>
+<details><summary>Problem aaye to?</summary><p>Telegram pe owner @somumod se contact karo.</p></details></section>
 <section><div class="cta"><h2 style="margin-bottom:8px">Ready to host? 🚀</h2><p style="color:#9aa7b5;margin:0 0 16px">Abhi Telegram pe bot kholo.</p><a class="btn p" href="__BOTLINK__">Open Bot</a></div></section>
-<footer>Developed by <b>Aditya (Genius Hacker)</b><br><a href="__YT__">YouTube</a>&bull;<a href="__CHANNEL__">Telegram Channel</a>&bull;<a href="https://t.me/__OWNER__">Contact</a></footer></body></html>"""
+<footer>Powered by <b>Somu Mods</b><br><a href="__YT__">YouTube</a>&bull;<a href="__CHANNEL__">Telegram Channel</a>&bull;<a href="https://t.me/__OWNER__">Contact</a></footer></body></html>"""
 
 async def landing_page(request):
     global _BOT_USERNAME
@@ -2493,7 +2485,6 @@ async def landing_page(request):
     return web.Response(text=page, content_type='text/html')
 
 async def keep_alive():
-    """Render free service ko sone se bachane ke liye khud ko ping karta hai"""
     url = os.getenv('RENDER_EXTERNAL_URL')
     if not url:
         return
@@ -2505,7 +2496,7 @@ async def keep_alive():
                     logger.info(f"Keep-alive ping: {r.status}")
         except Exception as e:
             logger.warning(f"Keep-alive failed: {e}")
-        await asyncio.sleep(600)  # har 10 minute
+        await asyncio.sleep(600)
 
 async def web_server():
     app = web.Application()
@@ -2527,7 +2518,7 @@ async def web_server():
     logger.info(f"🌐 Web server started on port {port}")
 
 async def main():
-    logger.info("🚀 Starting Advanced File Host Bot...")
+    logger.info("🚀 Starting Somu Mods Bot...")
     
     asyncio.create_task(web_server())
     asyncio.create_task(keep_alive())
