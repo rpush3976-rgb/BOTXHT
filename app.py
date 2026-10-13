@@ -400,6 +400,8 @@ async def callback_upload_file(callback: types.CallbackQuery):
 2️⃣ Wait for upload confirmation
 3️⃣ File will be saved automatically
 
+🔄 <b>Note:</b> Same naam ki file dobara bhejo to purani replace ho jayegi!
+
 ⚡ <b>Upload limit:</b> {limit} files
 🔥 <b>Quick & Easy!</b>
 """
@@ -691,6 +693,7 @@ async def callback_all_features(callback: types.CallbackQuery):
 • Unlimited file uploads
 • Koi premium plan nahi
 • Sabke liye same features
+• 🔄 Same file replace feature
 """
     
     back_keyboard = InlineKeyboardMarkup(inline_keyboard=[
@@ -894,11 +897,53 @@ async def handle_document(message: types.Message):
     
     file_path = user_folder / file_name
     
+    # 🔄 REPLACE LOGIC: Check karo purani file exist karti hai ya nahi
+    file_exists = file_path.exists()
+    was_running = False
+    old_script_key = f"{user_id}_{file_name}"
+    
+    # Agar purani file chal rahi hai to pehle stop karo
+    if old_script_key in bot_scripts:
+        was_running = True
+        try:
+            script_info = bot_scripts[old_script_key]
+            process = script_info['process']
+            log_file = script_info.get('log_file')
+            
+            if log_file and not log_file.closed:
+                log_file.close()
+            
+            parent = psutil.Process(process.pid)
+            children = parent.children(recursive=True)
+            
+            for child in children:
+                child.terminate()
+            parent.terminate()
+            
+            del bot_scripts[old_script_key]
+            logger.info(f"Stopped running script before replace: {old_script_key}")
+        except Exception as e:
+            logger.error(f"Failed to stop old script: {e}")
+    
+    # Purani file delete karo agar exist karti hai
+    if file_exists:
+        try:
+            file_path.unlink()
+            logger.info(f"Deleted old file: {file_path}")
+        except Exception as e:
+            logger.error(f"Failed to delete old file: {e}")
+            await message.answer(f"❌ Purani file delete nahi ho payi: {str(e)}")
+            return
+    
     try:
         file_size_kb = document.file_size / 1024
         
+        # Status message — Replace ya New upload
+        action_emoji = "🔄" if file_exists else "📤"
+        action_text = "Replacing file..." if file_exists else "Preparing upload..."
+        
         status_msg = await message.answer(
-            f"📤 <b>Preparing upload...</b>\n\n"
+            f"{action_emoji} <b>{action_text}</b>\n\n"
             f"📄 File: <code>{file_name}</code>\n"
             f"💾 Size: {file_size_kb:.2f} KB\n\n"
             f"▓░░░░░░░░░ 0%",
@@ -927,18 +972,24 @@ async def handle_document(message: types.Message):
         if user_id not in user_files:
             user_files[user_id] = []
         
+        # 🔄 MEMORY REPLACE: Purani same-naam entry hatao, nayi add karo
+        user_files[user_id] = [f for f in user_files[user_id] if f[0] != file_name]
         user_files[user_id].append((file_name, file_ext[1:]))
         
+        # 🗄️ DATABASE REPLACE: INSERT OR REPLACE already unique rakhta hai
         conn = sqlite3.connect(DATABASE_PATH)
         c = conn.cursor()
         now = datetime.now().isoformat()
         c.execute('INSERT OR REPLACE INTO user_files (user_id, file_name, file_type, upload_date) VALUES (?, ?, ?, ?)',
                   (user_id, file_name, file_ext[1:], now))
-        c.execute('UPDATE bot_stats SET stat_value = stat_value + 1 WHERE stat_name = ?', ('total_uploads',))
+        
+        # Sirf naye upload pe count badhao, replace pe nahi
+        if not file_exists:
+            c.execute('UPDATE bot_stats SET stat_value = stat_value + 1 WHERE stat_name = ?', ('total_uploads',))
+            bot_stats['total_uploads'] = bot_stats.get('total_uploads', 0) + 1
+        
         conn.commit()
         conn.close()
-        
-        bot_stats['total_uploads'] = bot_stats.get('total_uploads', 0) + 1
         
         await status_msg.edit_text(
             f"✅ <b>Finalizing...</b>\n\n"
@@ -950,6 +1001,7 @@ async def handle_document(message: types.Message):
         
         await asyncio.sleep(0.5)
         
+        # Keyboard — ZIP aur normal files ke liye alag
         if file_ext == '.zip':
             keyboard = InlineKeyboardMarkup(inline_keyboard=[
                 [InlineKeyboardButton(text="📦 Extract ZIP", callback_data=f"extract_zip:{file_name}"),
@@ -969,8 +1021,27 @@ async def handle_document(message: types.Message):
                  InlineKeyboardButton(text="🏠 Main Menu", callback_data="back_to_main")]
             ])
         
-        await status_msg.edit_text(
-            f"""
+        # Success message — Replace ya New
+        if file_exists:
+            title = "🔄 FILE REPLACED!"
+            extra_note = ""
+            if was_running:
+                extra_note = "\n\n⚠️ <b>Note:</b> Purani running script stop kar di gayi thi."
+            final_text = f"""
+╔═══════════════════════╗
+    {title}
+╚═══════════════════════╝
+
+📄 <b>File:</b> <code>{file_name}</code>
+📦 <b>Type:</b> {file_ext[1:].upper()}
+💾 <b>Size:</b> {document.file_size / 1024:.2f} KB
+📊 <b>Total Files:</b> {len(user_files.get(user_id, []))} (Unlimited ♾️){extra_note}
+
+✅ <b>Purani file replace ho gayi!</b>
+🚀 Ab naya version run kar sakte ho.
+"""
+        else:
+            final_text = f"""
 ╔═══════════════════════╗
     ✅ <b>UPLOAD SUCCESS!</b> ✅
 ╚═══════════════════════╝
@@ -978,13 +1049,13 @@ async def handle_document(message: types.Message):
 📄 <b>File:</b> <code>{file_name}</code>
 📦 <b>Type:</b> {file_ext[1:].upper()}
 💾 <b>Size:</b> {document.file_size / 1024:.2f} KB
-📊 <b>Usage:</b> {current_files + 1} files (Unlimited ♾️)
+📊 <b>Total Files:</b> {len(user_files.get(user_id, []))} (Unlimited ♾️)
 
 🎉 File uploaded successfully!
-""",
-            reply_markup=keyboard,
-            parse_mode="HTML"
-        )
+"""
+        
+        await status_msg.edit_text(final_text, reply_markup=keyboard, parse_mode="HTML")
+        
     except Exception as e:
         logger.error(f"Error uploading file: {e}")
         await message.answer(f"❌ Upload failed: {str(e)}")
@@ -1223,6 +1294,8 @@ Please wait...
                 if user_id not in user_files:
                     user_files[user_id] = []
                 
+                # Replace logic for extracted files too
+                user_files[user_id] = [f for f in user_files[user_id] if f[0] != just_name]
                 user_files[user_id].append((just_name, file_ext[1:]))
                 
                 c.execute('INSERT OR REPLACE INTO user_files (user_id, file_name, file_type, upload_date) VALUES (?, ?, ?, ?)',
@@ -2110,6 +2183,7 @@ async def cmd_help(message: types.Message):
    • Click 'Upload File'
    • Send your .py, .js, or .zip file
    • File will be saved automatically
+   • 🔄 Same file dobara bhejo to replace ho jayegi
 
 2️⃣ <b>Run Scripts:</b>
    • Go to 'My Files'
@@ -2197,7 +2271,7 @@ _BOT_USERNAME = None
 
 def _auth_ok(request):
     if not ADMIN_PASSWORD:
-        return True
+        return False  # 🔒 Default closed for security
     h = request.headers.get('Authorization', '')
     if not h.startswith('Basic '):
         return False
@@ -2209,7 +2283,7 @@ def _auth_ok(request):
 
 def _deny():
     if not ADMIN_PASSWORD:
-        return web.Response(text="Panel off hai. Render Environment mein ADMIN_PASSWORD set karo.", status=503)
+        return web.Response(text="Panel off hai. ADMIN_PASSWORD set karo.", status=503)
     return web.Response(status=401, headers={'WWW-Authenticate': 'Basic realm="Admin"'}, text="Login required")
 
 def _running_list():
@@ -2379,7 +2453,7 @@ button.a{background:#21262d;color:#e6edf3;border:1px solid #30363d;border-radius
 .r{background:#da3633!important;border-color:#da3633!important}.g{background:#238636!important;border-color:#238636!important}.b{background:#1f6feb!important;border-color:#1f6feb!important}
 input,textarea{background:#0b0f17;color:#e6edf3;border:1px solid #30363d;border-radius:8px;padding:9px;font-size:13px;width:100%}
 .row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}.row input{flex:1;min-width:120px}
-.tag{padding:2px 8px;border-radius:20px;font-size:11px}.on{}.t-on{background:#12361f;color:#3fb950}.t-off{background:#2a2f38;color:#8b949e}
+.tag{padding:2px 8px;border-radius:20px;font-size:11px}.t-on{background:#12361f;color:#3fb950}.t-off{background:#2a2f38;color:#8b949e}
 .two{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px}.bars{display:flex;align-items:flex-end;gap:8px;height:130px;margin-top:12px}
 .bc{flex:1;text-align:center;display:flex;flex-direction:column;justify-content:flex-end;align-items:center}.bc i{font-style:normal;font-size:11px;color:#9aa7b5}.bc small{font-size:10px;color:#6b7785}
 .bar{width:100%;background:linear-gradient(#58a6ff,#1f6feb);border-radius:5px 5px 0 0}.hb{display:flex;align-items:center;gap:8px;margin-top:8px;font-size:12px}.hb span{width:56px;overflow:hidden;text-overflow:ellipsis}
@@ -2453,10 +2527,10 @@ footer{text-align:center;color:#6b7785;padding:28px 10px;font-size:13px;border-t
 <div class="stats"><div class="st"><b>__USERS__</b><small>Users</small></div><div class="st"><b>__RUNNING__</b><small>Bots running now</small></div><div class="st"><b>__FILES__</b><small>Files hosted</small></div></div>
 <section id="features"><h2>Features</h2><div class="g">
 <div class="f"><h3>📤 Easy Upload</h3><p>.py, .js aur .zip files seedha Telegram chat se upload karo.</p></div>
+<div class="f"><h3>🔄 File Replace</h3><p>Same naam ki file dobara bhejo, purani auto replace ho jayegi.</p></div>
 <div class="f"><h3>⚙️ Auto Install</h3><p>Zaroori Python packages apne aap install ho jate hain.</p></div>
 <div class="f"><h3>▶️ Run &amp; Stop</h3><p>Bot ke buttons se script start, stop aur manage karo.</p></div>
 <div class="f"><h3>📁 File Manager</h3><p>Files dekho, search karo, download aur delete karo.</p></div>
-<div class="f"><h3>⭐ Favorites</h3><p>Apni important scripts ko favorite mein rakho.</p></div>
 <div class="f"><h3>🆓 Totally Free</h3><p>Unlimited uploads, sabke liye same features.</p></div></div></section>
 <section id="how"><h2>Kaise use karein</h2>
 <div class="step"><div class="num">1</div><div><b>Bot kholo</b><br><span style="color:#9aa7b5">Telegram pe bot open karke /start dabao.</span></div></div>
@@ -2465,6 +2539,7 @@ footer{text-align:center;color:#6b7785;padding:28px 10px;font-size:13px;border-t
 <section id="faq"><h2>FAQ</h2>
 <details><summary>Kya ye sach mein free hai?</summary><p>Haan, koi premium plan ya upload limit nahi hai.</p></details>
 <details><summary>Kaunsi files chalti hain?</summary><p>Python (.py), Node.js (.js) aur ZIP projects.</p></details>
+<details><summary>Same file dobara upload karu to?</summary><p>Purani file automatically replace ho jayegi, aur agar chal rahi thi to stop bhi ho jayegi.</p></details>
 <details><summary>Problem aaye to?</summary><p>Telegram pe owner @somumod se contact karo.</p></details></section>
 <section><div class="cta"><h2 style="margin-bottom:8px">Ready to host? 🚀</h2><p style="color:#9aa7b5;margin:0 0 16px">Abhi Telegram pe bot kholo.</p><a class="btn p" href="__BOTLINK__">Open Bot</a></div></section>
 <footer>Powered by <b>Somu Mods</b><br><a href="__YT__">YouTube</a>&bull;<a href="__CHANNEL__">Telegram Channel</a>&bull;<a href="https://t.me/__OWNER__">Contact</a></footer></body></html>"""
